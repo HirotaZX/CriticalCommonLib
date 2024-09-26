@@ -16,8 +16,8 @@ namespace CriticalCommonLib.Services.Ui
         }
 
         public override WindowName WindowName { get; set; } = WindowName.MiragePrismPrismBox;
-        public int ButtonOffsetId = 30;
-        public int RadioButtonOffsetId = 17;
+        public int ButtonOffsetId = 31;
+        public int RadioButtonOffsetId = 18;
 
         public enum DresserTab
         {
@@ -143,11 +143,10 @@ namespace CriticalCommonLib.Services.Ui
             get
             {
                 var agent = FFXIVClientStructs.FFXIV.Client.System.Framework.Framework
-                    .Instance()->UIModule->GetAgentModule()->GetAgentByInternalId(AgentId.MiragePrismPrismBox);
+                    .Instance()->UIModule->GetAgentModule()->GetAgentMiragePrismPrismBox();
                 if (agent->IsAgentActive())
                 {
-                    var actualAgent = (InventoryMiragePrismBoxAgent*) agent;
-                    return actualAgent->SelectedPage;
+                    return agent->PageIndex;
                 }
                 return -1;
             }

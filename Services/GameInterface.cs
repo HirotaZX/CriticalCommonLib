@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using CriticalCommonLib.Models;
 using CriticalCommonLib.Sheets;
+using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Plugin.Services;
 using Dalamud.Utility.Signatures;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
@@ -16,6 +17,7 @@ namespace CriticalCommonLib.Services
     public unsafe class GameInterface : IGameInterface
     {
         private readonly IGameInteropProvider _gameInteropProvider;
+        private readonly ICondition _condition;
 
         public delegate void AcquiredItemsUpdatedDelegate();
 
@@ -30,9 +32,10 @@ namespace CriticalCommonLib.Services
 
         public readonly IReadOnlyDictionary<uint, Cabinet> ArmoireItems;
 
-        public GameInterface(IGameInteropProvider gameInteropProvider)
+        public GameInterface(IGameInteropProvider gameInteropProvider, ICondition condition)
         {
             _gameInteropProvider = gameInteropProvider;
+            _condition = condition;
             _gameInteropProvider.InitializeFromAttributes(this);
 
             ArmoireItems = Service.ExcelCache.GetCabinetSheet()!.Where(row => row.Item.Row != 0).ToDictionary(row => row.Item.Row, row => row);
@@ -60,7 +63,7 @@ namespace CriticalCommonLib.Services
         public void OpenGatheringLog(uint itemId)
         {
             var itemIdShort = (ushort)(itemId % 500_000);
-            AgentGatheringNote* agent = (AgentGatheringNote*)Framework.Instance()->GetUiModule()->GetAgentModule()->GetAgentByInternalId(AgentId.GatheringNote);
+            AgentGatheringNote* agent = (AgentGatheringNote*)Framework.Instance()->UIModule->GetAgentModule()->GetAgentByInternalId(AgentId.GatheringNote);
             if (agent != null)
             {
                 agent->OpenGatherableByItemId(itemIdShort);
@@ -70,7 +73,7 @@ namespace CriticalCommonLib.Services
         public void OpenFishingLog(uint itemId, bool isSpearfishing)
         {
             var itemIdShort = (ushort)(itemId % 500_000);
-            var agent = (AgentFishGuide*)Framework.Instance()->GetUiModule()->GetAgentModule()->GetAgentByInternalId(AgentId.FishGuide);
+            var agent = (AgentFishGuide*)Framework.Instance()->UIModule->GetAgentModule()->GetAgentByInternalId(AgentId.FishGuide);
             if (agent != null)
             {
                 agent->OpenForItemId(itemIdShort, isSpearfishing);
@@ -141,16 +144,33 @@ namespace CriticalCommonLib.Services
                 : null;
         }
 
-        public void OpenCraftingLog(uint itemId)
+        public bool OpenCraftingLog(uint itemId)
         {
+            if (_condition[ConditionFlag.Crafting] || _condition[ConditionFlag.Crafting40])
+            {
+                if (!_condition[ConditionFlag.PreparingToCraft])
+                {
+                    return false;
+                }
+            }
             itemId = itemId % 500_000;
             if (Service.ExcelCache.CanCraftItem(itemId)) AgentRecipeNote.Instance()->OpenRecipeByItemId(itemId);
+            
+            return true;
         }
 
-        public void OpenCraftingLog(uint itemId, uint recipeId)
+        public bool OpenCraftingLog(uint itemId, uint recipeId)
         {
+            if (_condition[ConditionFlag.Crafting] || _condition[ConditionFlag.Crafting40])
+            {
+                if (!_condition[ConditionFlag.PreparingToCraft])
+                {
+                    return false;
+                }
+            }
             itemId = itemId % 500_000;
             if (Service.ExcelCache.CanCraftItem(itemId)) AgentRecipeNote.Instance()->OpenRecipeByRecipeId(recipeId);
+            return true;
         }
         
         private bool _disposed;

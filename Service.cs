@@ -1,14 +1,12 @@
 ﻿using CriticalCommonLib.Services;
-using DalaMock.Shared.Interfaces;
 using Dalamud.Game.ClientState.Objects;
 using Dalamud.IoC;
 using Dalamud.Plugin.Services;
 
 namespace CriticalCommonLib
 {
-    public class Service : IServiceContainer
+    public class Service
     {
-        public static IPluginInterfaceService Interface { get; set; } = null!;
         [PluginService] public static IChatGui Chat { get; set; } = null!;
         [PluginService] public static IClientState ClientState { get; set; } = null!;
         [PluginService] public static ICommandManager Commands { get; set; } = null!;
@@ -29,23 +27,10 @@ namespace CriticalCommonLib
         [PluginService] public static ITitleScreenMenu TitleScreenMenu { get; set; } = null!;
         public static ExcelCache ExcelCache { get; set; } = null!;
 
-        public IPluginInterfaceService PluginInterfaceService
-        {
-            get
-            {
-                return Interface;
-            }
-            set
-            {
-                Interface = value;
-            }
-        }
-
         public void Dispose()
         {
             //Required so we aren't left with a static that points to excel cache
             ExcelCache = null!;
-            Interface = null!;
         }
     }
 }

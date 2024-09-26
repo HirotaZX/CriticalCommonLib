@@ -11,7 +11,6 @@ using Dalamud.Memory;
 using Dalamud.Plugin.Services;
 using Dalamud.Utility.Signatures;
 using FFXIVClientStructs.FFXIV.Client.Game;
-using FFXIVClientStructs.FFXIV.Client.Game.Housing;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using FFXIVClientStructs.FFXIV.Client.System.Framework;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
@@ -47,7 +46,7 @@ namespace CriticalCommonLib.Services
         public DateTime? _nextBagScan;
 
         public InventoryScanner(ICharacterMonitor characterMonitor, IGameUiManager gameUiManager,
-            IGameInterface gameInterface, OdrScanner odrScanner, IGameInteropProvider gameInteropProvider)
+            IGameInterface gameInterface, OdrScanner odrScanner, IGameInteropProvider gameInteropProvider, ExcelCache excelCache)
         {
             _gameUiManager = gameUiManager;
             _characterMonitor = characterMonitor;
@@ -62,8 +61,8 @@ namespace CriticalCommonLib.Services
             _characterMonitor.OnActiveRetainerChanged += CharacterMonitorOnOnActiveRetainerChanged;
             _characterMonitor.OnActiveFreeCompanyChanged += CharacterMonitorOnOnActiveFreeCompanyChanged;
             _characterMonitor.OnActiveHouseChanged += CharacterMonitorOnOnActiveHouseChanged;
-            Armoire = new InventoryItem[Service.ExcelCache.CabinetSize];
-            GlamourChest = new InventoryItem[Service.ExcelCache.GlamourChestSize];
+            Armoire = new InventoryItem[excelCache.GetCabinetSheet().Count()];
+            GlamourChest = new InventoryItem[excelCache.GlamourChestSize];
             Service.Framework.Update += FrameworkOnUpdate;
             Service.Log.Verbose("Starting service {type} ({this})", GetType().Name, this);
         }
@@ -787,7 +786,7 @@ namespace CriticalCommonLib.Services
         public InventoryItem[] ArmouryNeck { get; } = new InventoryItem[35];
         public InventoryItem[] ArmouryWrists { get; } = new InventoryItem[35];
         public InventoryItem[] ArmouryRings { get; } = new InventoryItem[50];
-        public InventoryItem[] ArmourySoulCrystals { get; } = new InventoryItem[23];
+        public InventoryItem[] ArmourySoulCrystals { get; } = new InventoryItem[25];
 
 
         public InventoryItem[] FreeCompanyBag1 { get; } = new InventoryItem[50];
@@ -867,7 +866,6 @@ namespace CriticalCommonLib.Services
         }
 
         private List<uint>? _currencyItemIds;
-        private uint _itemUiCategory = 100;
 
         public unsafe void ParseCharacterBags(InventorySortOrder currentSortOrder, BagChangeContainer changeSet)
         {
@@ -879,7 +877,7 @@ namespace CriticalCommonLib.Services
             var currency = InventoryManager.Instance()->GetInventoryContainer(InventoryType.Currency);
             if (_currencyItemIds == null)
             {
-                _currencyItemIds = Service.ExcelCache.GetItemExSheet().Where(c => c.ItemUICategory.Row == _itemUiCategory).Select(c => c.RowId).ToList();
+                _currencyItemIds = Service.ExcelCache.GetItemExSheet().Where(c => c.RowId is >= 20 and <= 60 && c.FilterGroup == 16 || c.ItemUICategory.Row == 100 || c.RowId == 1).Select(c => c.RowId).ToList();
             }
             
             if (bag0 != null && bag1 != null && bag2 != null && bag3 != null && crystals != null && currency != null)
@@ -1011,31 +1009,20 @@ namespace CriticalCommonLib.Services
                             changeSet.Add(new BagChange(item, InventoryType.Crystals));
                         }
                     }
-
-                    for (var i = 0; i < currency->Size; i++)
-                    {
-                        var item = currency->Items[i];
-                        item.Slot = (short)i;
-                        if (!CharacterCurrency[i].IsSame(item))
-                        {
-                            CharacterCurrency[i] = item;
-                            changeSet.Add(new BagChange(item, InventoryType.Currency));
-                        }
-                    }
                     
-                    short slot = (short)(currency->Size + 1);
+                    short slot = 0;
                     foreach (var currencyItemId in _currencyItemIds)
                     {
                         var itemCount = InventoryManager.Instance()->GetInventoryItemCount(currencyItemId, false, false, false);
                         if (itemCount != 0)
                         {
                             var fakeInventoryItem = new InventoryItem();
-                            fakeInventoryItem.ItemID = currencyItemId;
+                            fakeInventoryItem.ItemId = currencyItemId;
                             fakeInventoryItem.Slot = slot;
                             fakeInventoryItem.Quantity = (uint)itemCount;
                             fakeInventoryItem.Container = InventoryType.Currency;
                             fakeInventoryItem.Flags = InventoryItem.ItemFlags.None;
-                            fakeInventoryItem.GlamourID = 0;
+                            fakeInventoryItem.GlamourId = 0;
                             if (!CharacterCurrency[slot].IsSame(fakeInventoryItem))
                             {
                                 CharacterCurrency[slot] = fakeInventoryItem;
@@ -1228,7 +1215,7 @@ namespace CriticalCommonLib.Services
                 {
                     var bagSpace = 35;
                     if (armoryChest.Value == InventoryType.ArmoryMainHand || armoryChest.Value == InventoryType.ArmoryRings) bagSpace = 50;
-                    if (armoryChest.Value == InventoryType.ArmorySoulCrystal) bagSpace = 23;
+                    if (armoryChest.Value == InventoryType.ArmorySoulCrystal) bagSpace = 25;
                     var newBags = new InventoryItem[bagSpace];
                     var odrOrdering = currentSortOrder.NormalInventories[armoryChest.Key];
                     var gameOrdering = InventoryManager.Instance()->GetInventoryContainer(armoryChest.Value);
@@ -1479,12 +1466,12 @@ namespace CriticalCommonLib.Services
 
             if (_loadedInventories.Contains((InventoryType)Enums.InventoryType.FreeCompanyCurrency))
             {
-                var atkDataHolder = Framework.Instance()->GetUiModule()->GetRaptureAtkModule()->AtkModule
+                var atkDataHolder = Framework.Instance()->UIModule->GetRaptureAtkModule()->AtkModule
                     .AtkArrayDataHolder;
-                var fcHolder = atkDataHolder.GetNumberArrayData(50);
+                var fcHolder = atkDataHolder.GetNumberArrayData(51);
                 var fcCredit = fcHolder->IntArray[9];
                 var fakeCreditItem = new InventoryItem();
-                fakeCreditItem.ItemID = 80;
+                fakeCreditItem.ItemId = 80;
                 fakeCreditItem.Container = (InventoryType)Enums.InventoryType.FreeCompanyCurrency;
                 fakeCreditItem.Quantity = (uint)fcCredit;
                 fakeCreditItem.Slot = 0;
@@ -1522,14 +1509,22 @@ namespace CriticalCommonLib.Services
                 var isInArmoire = _gameInterface.IsInArmoire(itemId);
                 var armoireItem = new InventoryItem
                 {
-                    Slot = (short)index, ItemID = isInArmoire ? itemId : 0, Quantity = isInArmoire ? 1u : 0u,
+                    Slot = (short)index, ItemId = isInArmoire ? itemId : 0, Quantity = isInArmoire ? 1u : 0u,
                     Flags = InventoryItem.ItemFlags.None
                 };
-                if (!armoireItem.IsSame(Armoire[index]))
+                if (index >= 0 && index < Armoire.Length)
                 {
-                    Armoire[index] = armoireItem;
-                    //Push a custom inventory type
-                    changeSet.Add(new BagChange(armoireItem, (InventoryType)Enums.InventoryType.Armoire));
+                    if (!armoireItem.IsSame(Armoire[index]))
+                    {
+                        Armoire[index] = armoireItem;
+                        //Push a custom inventory type
+                        changeSet.Add(new BagChange(armoireItem, (InventoryType)Enums.InventoryType.Armoire));
+                    }
+                }
+                else
+                {
+                    Service.Log.Error($"Armoire under/overflowed, attempted to access {index} but armoire can only fit {Armoire.Length}");
+                    break;
                 }
 
                 index++;
@@ -1542,8 +1537,8 @@ namespace CriticalCommonLib.Services
         private DateTime? _glamourAgentOpened;
         public unsafe void ParseGlamourChest(InventorySortOrder currentSortOrder, BagChangeContainer changeSet)
         {
-            var agents = Framework.Instance()->GetUiModule()->GetAgentModule();
-            var dresserAgent = agents->GetAgentByInternalId(AgentId.MiragePrismPrismBox);
+            var agents = Framework.Instance()->UIModule->GetAgentModule();
+            var dresserAgent = (AgentMiragePrismPrismBox*)agents->GetAgentByInternalId(AgentId.MiragePrismPrismBox);
             if (agents == null || dresserAgent == null || !dresserAgent->IsAgentActive())
             {
                 _glamourAgentActive = false;
@@ -1564,32 +1559,32 @@ namespace CriticalCommonLib.Services
             
             InMemory.Add((InventoryType)Enums.InventoryType.GlamourChest);
 
-            var itemsStart = *(IntPtr*)((IntPtr)dresserAgent + 40) + 40;
-            if (itemsStart == IntPtr.Zero) return;
-            for (var i = 0; i < 800; i++)
+            short index = 0;
+            foreach (var chestItem in dresserAgent->Data->PrismBoxItems)
             {
-                var glamItem = *(GlamourItem*)(itemsStart + i * 136);
                 var flags = InventoryItem.ItemFlags.None;
-                var itemId = glamItem.ItemId;
-                var index = (short)glamItem.Index;
+                var itemId = chestItem.ItemId;
                 if (itemId >= 1_000_000)
                 {
                     itemId -= 1_000_000;
-                    flags = InventoryItem.ItemFlags.HQ;
+                    flags = InventoryItem.ItemFlags.HighQuality;
                 }
 
-                //Spiritbond becomes i because we need both indexes and this was the best way I could think of doing this.
                 var glamourItem = new InventoryItem
                 {
-                    Slot = index, ItemID = itemId, Quantity = itemId != 0 ? 1u : 0u, Flags = flags,
-                    Stain = glamItem.StainId, Spiritbond = (ushort)i
+                    Slot = (short)chestItem.Slot, ItemId = itemId, Quantity = itemId != 0 ? 1u : 0u, Flags = flags, Spiritbond = (ushort)index
                 };
-                if (!glamourItem.IsSame(GlamourChest[i],false))
+                glamourItem.Stains[0] = chestItem.Stains[0];
+                glamourItem.Stains[1] = chestItem.Stains[1];
+
+                if (!glamourItem.IsSame(GlamourChest[index],false))
                 {
-                    GlamourChest[i] = glamourItem;
+                    GlamourChest[index] = glamourItem;
                     //Push a custom inventory type
                     changeSet.Add(new BagChange(glamourItem, (InventoryType)Enums.InventoryType.GlamourChest));
                 }
+
+                index++;
             }
         }
 
@@ -1971,20 +1966,22 @@ namespace CriticalCommonLib.Services
                 return;
             }
 
-            for (byte i = 0; i < gearSetModule->EntriesSpan.Length; i++)
+            for (byte i = 0; i < gearSetModule->Entries.Length; i++)
             {
-                var gearSet = gearSetModule->EntriesSpan[i];
+                var gearSet = gearSetModule->Entries[i];
                 if (gearSet.Flags.HasFlag(RaptureGearsetModule.GearsetFlag.Exists))
                 {
                     GearSetsUsed[i] = true;
-                    var gearSetName = MemoryHelper.ReadSeStringNullTerminated((IntPtr)gearSet.Name).ToString();
+                    var gearSetName = gearSet.NameString;
                     GearSetNames[i] = gearSetName;
+
+
 
                     var gearSetItems = new[]
                     {
-                        gearSet.MainHand, gearSet.OffHand, gearSet.Head, gearSet.Body, gearSet.Hands,
-                        gearSet.Legs, gearSet.Feet, gearSet.Ears, gearSet.Neck, gearSet.Wrists, gearSet.RingRight,
-                        gearSet.RingLeft, gearSet.SoulStone
+                        gearSet.GetItem(RaptureGearsetModule.GearsetItemIndex.MainHand), gearSet.GetItem(RaptureGearsetModule.GearsetItemIndex.OffHand), gearSet.GetItem(RaptureGearsetModule.GearsetItemIndex.Head), gearSet.GetItem(RaptureGearsetModule.GearsetItemIndex.Body), gearSet.GetItem(RaptureGearsetModule.GearsetItemIndex.Hands),
+                        gearSet.GetItem(RaptureGearsetModule.GearsetItemIndex.Legs), gearSet.GetItem(RaptureGearsetModule.GearsetItemIndex.Feet), gearSet.GetItem(RaptureGearsetModule.GearsetItemIndex.Ears), gearSet.GetItem(RaptureGearsetModule.GearsetItemIndex.Neck), gearSet.GetItem(RaptureGearsetModule.GearsetItemIndex.Wrists), gearSet.GetItem(RaptureGearsetModule.GearsetItemIndex.RingRight),
+                        gearSet.GetItem(RaptureGearsetModule.GearsetItemIndex.RingLeft), gearSet.GetItem(RaptureGearsetModule.GearsetItemIndex.SoulStone)
                     };
                     if (!GearSets.ContainsKey(i))
                     {
@@ -1993,7 +1990,7 @@ namespace CriticalCommonLib.Services
                     for (var index = 0; index < gearSetItems.Length; index++)
                     {
                         var gearSetItem = gearSetItems[index];
-                        var itemId = gearSetItem.ItemID;
+                        var itemId = gearSetItem.ItemId;
                         GearSets[i][index] = itemId;
                     }
                 }
